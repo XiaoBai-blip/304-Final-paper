@@ -1,0 +1,506 @@
+---
+title: "Analyzing the Factors behind Toronto Fire Incidents in 2018"
+author:
+- Xiao Bai
+date: "10/04/2022"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+subtitle: "A study of Tanzanian's education level obtained, using Tanzania's Demographic and Health Survey report, 1996"
+
+abstract: "Fire incident is one of the most common harzards in our daily life, and understanding the nature, characteristics and response performances of fire departments during major disasters and emergencies is very important. This paper will use data set provided by 'Open Data Toronto' to conduct a study about estimated dollar loss per fire incident and potential factors that may cause the variation of dollar loss of different fire incidents. Specificately, we will perform multiple linear regression model to identify whether the number of personnels and equipments used result in different total cost. Supplimentarily, we also conducted hypothesis test using bootstrap method to see if the cost of fire reduced when using different fire control methods."
+"
+bibliography: references.bib
+---
+
+Code and data are available at ^[ https://github.com/XiaoBai-blip/paper4]
+
+```{r setup, include=FALSE}
+library(tidyverse)
+install.packages("Rmisc")
+library(car)
+library(ggplot2)
+library(Rmisc)
+install.packages("gridExtra")
+library(gridExtra)
+library(grid)
+```
+
+
+```{r cars}
+# read the data
+fire = read_csv('Fire Incidents.csv', show_col_types = FALSE)
+blood_pressure2 = fire %>% #select predictors that will be used in this research and do the cleaning process
+  select(Estimated_Dollar_Loss, Number_of_responding_apparatus, Number_of_responding_personnel, Method_Of_Fire_Control,Sprinkler_System_Operation, TFS_Alarm_Time, TFS_Arrival_Time, Building_Status,Fire_Alarm_System_Operation )%>%
+  filter(!is.na(Estimated_Dollar_Loss),!is.na(Number_of_responding_apparatus), !is.na(Number_of_responding_personnel),!is.na(Sprinkler_System_Operation), !is.na(TFS_Alarm_Time),!is.na(TFS_Arrival_Time), !is.na(Building_Status), !is.na(Fire_Alarm_System_Operation))%>%
+  mutate(Estimated_Dollar_Loss = Estimated_Dollar_Loss/10000, time_diff = difftime(TFS_Arrival_Time, TFS_Alarm_Time), arrival = as.numeric(time_diff))
+
+
+# save the final cleaned variable into a new data frame
+blood_pressure = blood_pressure2%>%
+  select(Estimated_Dollar_Loss, Number_of_responding_apparatus, Number_of_responding_personnel,arrival, Method_Of_Fire_Control,Sprinkler_System_Operation,Building_Status,Fire_Alarm_System_Operation)
+
+
+```
+
+
+
+```{r pressure, echo=FALSE}
+## Create training and test set ##
+set.seed(000)
+
+# Count the number of observations in the data
+n <- nrow(blood_pressure)
+
+# Randomly choose 80% as training
+training_indices <- sample(1:n, size=round(0.8*n))
+
+# Add a column called "rowid" to our original data
+#blood_pressure <- blood_pressure %>% rowid_to_column()
+
+# Create a training set
+train <- blood_pressure %>% filter(rowid %in% training_indices)
+
+# Create a testing set
+test <- blood_pressure %>% filter(!(rowid %in% training_indices))
+train = na.omit(train)
+```
+
+\newpage
+# 1. Introduction 
+
+The Great Fire of Toronto of 1904 April, also known as the Cathedral Fire, was the first major fire in the history of Toronto, Ontario, Canada. The fire remains the largest fire ever to have occurred in Toronto. It swept through 20 acres of Toronto’s industrial core. By the time firefighters arrived the occurring place, the blaze had destroyed at least 98 buildings. Canadian Bank of Commerce general manager Edmund Walker states that the fire “was merely a halting moment in the prosperity of Toronto." [@citegreat]. The exact cause of the fire was never determined, however, it was thought that the fire started in the Currie Neckwear Company building after a stove pipe became red hot. Hundreds of firefighters from other cities were announced to help douse the flames. Since the fire was so massive that it could be seen from all the way in Buffalo, New York. American firefighters were also dispatched to provide help in dealing with fire. The fire was finally put out 9 hours after it had first been noticed with the help from multiple different cities [@citetragic].
+
+This hazard seriously injury people and caused damage and destroy buildings. Even though Downtown Toronto experienced a construction boom during the 1890s and 1900s, and buildings up to six storeys high arose during this period, the fire safety standards had not caught up until the occurring of Great Fire of Toronto [@citegreat]. It exposed the city’s need for safer building codes and a high-pressure water system. Right after the disaster happened, four years later, the city promoted high-pressure water system. Landlords were encouraged to install sprinkler systems. As a consequency, the Great Fire of Toronto caused severe financial loss. Total estimated losses were $10,000,000—in 1904 dollars. Most businesses had insurance, but even so, some lost tens of thousands of dollars. Five thousand workers lost their jobs, temporarily or permanently [@citeopen].
+
+Fire hazard presents in all areas of life. According to @citearson, civil authorities have recognized that the threat of fire incident not only affects the well-being of individuals, but also negatively influence the welfare and security of the community. @citeestimate argues that fire disaster is considered as the fourth most common cause of unintentional trauma all over the world, and residential fire incident accounts for a large percentage of fire-related injuries. In addition, even though there are many reasons that can cause a fire-related incident, one of the most major reasons is due to people’s lack of consciousness. For example, a stove left burning at the end of the work day can be the cause. If people being more conscious in the use of fire, the number of fire incident cases would reduce. Therefore, it is necessary to provide a basic understanding of the fire incident situation in Toronto, and the OFM’s possible methods for fire control.
+
+
+In this paper, I used 2018 Fire Incident cases collection from Open Data Toronto to study the factors behind that may potentially increase the fire risk. Specifically, in the essence of many people’s concerns about the financial cost of a fire event, if people are given an idea of possible total loss due to a fire incident, they will be more careful in fire usage in their daily life, which will then potentially reduce the number of  fire-related incident cases happen to some extent. In this case, the main topic of this paper will be more focusing on the potential factors that cause the dollar loss due to the fire. According to Harvey et al. (2020), researchers define total cost of a fire as the directly and indirectly cost of fire plus the cost of equipment used to prevent the spread of that fire. Specifically, Zhuang et al. (2017) breakdowns the total cost of a fire into two parts: expenditure and loss. Expenditure includes indirect (passive fire protection) expenditure and direct (active fire protection) expenditure, and loss refers to the human loss. Using the given dataset, I will investigate if the dollar loss depends on different number of responding firefighters, different number of equipment used as well as a few other factors in interest. To have a general understanding of the data set, I made explanatory data analysis with the data. I classify all potential predictors into numerical variables and categorical variables, and summarized numerical variable for our study into tables. Further, I made some plots to visualize the distribution of categorical variables
+
+Regarding statistical inference and modelling, I used confidence interval and multiple linear regression. The bootstrap will performed to estimated the sampling distribution about a given population. The result shows that we are 95% confident that true true average time that firefighters take to arrive an occurrence location is between 297.44 and 304.15 second. As for linear regression, I am interested in what factors affect the financial cost of a fire. To build an accurate model, I apply statistical model selection methods for selecting predictors that are more likely to explain the estimated dollar loss. I assume that factors of arrival time, different sprinkler system types, building status and fire alarm system type will drive the estimated dollar loss to be higher.
+
+The analysis will be conducted in R (R Core Team 2020), and the package we will use is tidyverse (Wickham et al. 2019). All graphs will be created using function ggplot2 (Wickham 2016). The packages knitr (Friendly et al. 2020) are also used to generate the R markdown report.
+
+
+# 2. Data 
+## 2.1 Data Sources 
+
+The dataset is collected from 'Open Data Toronto' @citeopendatatoronto and it contains information about Toronto's 2018 fire incident case record. Open Data Toronto is a digital data that is initiative by the City of Toronto government and it is made available with the technical characteristics necessary for it to be freely used @citeopendatatoronto. The portal provides a variety of tabular datasets relating to the city's services, infraustructions and development. There are in total more than ten different data categories in this portal, and the data that will be used in this paper relates to the information of Toronto's fire incident.
+
+The dataset relates to Toronto's 2018 Fire incident cases and it includes only Fire incidents as defined by the Ontario Fire Marshal. The Fire Marshal is the principal adviser to government on public fire protection policy and fire safety issues. Both the Fire Marshal and Deputy Fire Marshal are statutory positions, appointed by the Lieutenant Governor in Council[@citeoffice]. The Office of the Fire Marshal (OFM) promotes development to reduce the fire cases and minimize the negative impact of fire happen in Ontario. It also provides improvement on fire safety and other public safety hazards on people, property and the environment in Ontario. The OFM is responsible for encouraging fire protection, fire prevention and public safety in Ontario through administering provincial legislation. They works to ensure that all fire departments in Ontario provide the right levels of fire prevention and protection based on the needs and circumstances of the areas they serve and the provisions of the FPPA. Moreover, OFM provides support such as training for firefighters and other fire department personnel, and professional development seminars. This dataset provides information similar to what is sent to the Ontario Fire Marshal relating to only fire Incidents to which Toronto Fire responds in more detail than the dataset including all incident types. For privacy purposes personal information is not provided and exact address have been aggregated to the nearest major or minor intersection. Besides, the dataset receive a silver quality score and it is refreshed annually. The dataset is characterize under the topic of 'Public safety, Locations and mapping, Community services' and all data are display in table form.
+
+
+## 2.2 Data Cleaning and Data Overview
+
+The dataset contains 117,536 observation and 47 variables. Within all variables, only three of them are numerical which represent the estimated dollar loss due to a fire, the number of responding apparatus and the number of responding personnel respectively. All categorical variables can be classified into five segments: location of fire incident, occurring time, fire incident type, information about buildings, and how fire department responds to the fire. For the convenience of our study, I filtered out missing values. I omitted these missing values so that only meaningful numerical numbers are left. Also, after the data was imported, it is not perfectly clean. I first clean the names using janitor’s clean name function, and made all the numbers numeric. To make the data more readable, I created a new data frame which consists only variables in interest. These variables are estimated dollar loss, number of responding apparatus, number of responding personnel, TFS alarm time, TFS arrival time, method of fire control, sprinkler system operation, building status, and fire alarm system operation. I mutate a new variable by subtracting TFS arrival time to TFS alarm time for illustrating how long it takes for fire department to arrive fire occurring location. This new variable was then converted from minute to second for simplicity. Similarly, the variable estimated dollar loss is divided by 10000. Moreover, all digit numbers will display as two significant figures. The detailed description of these variables are shown in Table 1. 
+
+Table 1: Description of variables 
+
+In addition, to perform the model validation process, I split the given dataset randomly and into two independent sets of data: training and testing datasets. The proportion to split the dataset can be arbitrary, and 80/20 is the most common split proportion. The training dataset will be used to perform all model building and diagnostics until a final model is built. The testing dataset will only then be used to evaluate the performance of the model. To have an overview of our data, table 2 and 3 shows the basic summary for numerical variables in both training and testing dataset.
+
+Variable | Min | Max | Mean | Standard Deviation
+---------|------|------|------|------------------
+Arrival Time (in second)| 24    | 17871   | 300.7 | 203.45
+Responding Apparatus    | 1 | 175 | 7.42 |  7.13
+Responding Personnel    | 1 | 537 | 24.48 |   22.04
+Estimated Dollar Loss (in $10,000)  | 1e-07 | 5000 | 3.52 |   48.63
+Table: Numerical summaries of the variables (Training dataset)
+
+Variable | Min | Max | Mean | Standard Deviation
+---------|------|------|------|------------------
+Arrival Time (in second)| 26    | 735   | 297.98 | 80.74
+Responding Apparatus    | 1 | 436 | 7.51 |  10.79
+Responding Personnel    | 3 | 1275 | 24.8 |   32.69
+Estimated Dollar Loss (in $10,000)  | 0 | 1300 | 3.43 |   45.53
+Table: Numerical summaries of the variables (Testing dataset)
+
+
+Table 2 and 3 shows the numerical summary of variables that will be used for building regression model. The dataset is split into training and testing dataset, and the first table shows summaries of variables in training dataset while the second table shows summaries using testing dataset. As can be observed from this table, the mean of four variable in both training and testing datasets looks similar, even though their maximum values in two dataset have a large difference. The information in these two tables will be applied to check model validation in the following section.
+
+
+
+
+```{r}
+# Create summary table using training dataset for interested numerical variables
+train %>%
+  summarise(mean=mean(Number_of_responding_apparatus),min=min(Number_of_responding_apparatus),max=max(Number_of_responding_apparatus),sd=sd(Number_of_responding_apparatus))
+
+train %>%
+  summarise(total = n(), mean=mean(Number_of_responding_personnel),min=min(Number_of_responding_personnel),max=max(Number_of_responding_personnel),sd=sd(Number_of_responding_personnel))
+
+
+train %>%
+  summarise(total = n(), mean=mean(Estimated_Dollar_Loss),min=min(Estimated_Dollar_Loss),max=max(Estimated_Dollar_Loss),sd=sd(Estimated_Dollar_Loss))
+
+train %>%
+  summarise(mean=mean(arrival),min=min(arrival),max=max(arrival),sd=sd(arrival))
+
+# Create summary table using testing dataset for interested numerical variables
+test %>%
+  summarise(total = n(), mean=mean(Number_of_responding_apparatus),min=min(Number_of_responding_apparatus),max=max(Number_of_responding_apparatus),sd=sd(Number_of_responding_apparatus))
+
+test %>%
+  summarise(total = n(), mean=mean(Number_of_responding_personnel),min=min(Number_of_responding_personnel),max=max(Number_of_responding_personnel),sd=sd(Number_of_responding_personnel))
+
+
+test %>%
+  summarise(total = n(), mean=mean(Estimated_Dollar_Loss),min=min(Estimated_Dollar_Loss),max=max(Estimated_Dollar_Loss),sd=sd(Estimated_Dollar_Loss))
+test %>%
+  summarise(mean=mean(arrival),min=min(arrival),max=max(arrival),sd=sd(arrival))
+```
+
+
+```{r}
+# Create bar plot for categorical variables
+
+t1 = blood_pressure%>%
+  ggplot(aes(x = Method_Of_Fire_Control))+geom_bar(fill = "orange")+theme(axis.title.y = element_text(size = 6), axis.text.y=element_text(size=6, hjust=1))+coord_flip()
+t2 = blood_pressure%>%
+  ggplot(aes(x = Sprinkler_System_Operation))+geom_bar(fill = "orange")+theme(axis.title.y = element_text(size = 6), axis.text.y=element_text(size=6, hjust=1))+coord_flip()
+
+t4 = blood_pressure%>%
+  ggplot(aes(x = Building_Status))+geom_bar(fill = "orange")+theme(axis.title.y = element_text(size = 6), axis.text.y=element_text(size=6, hjust=1))+coord_flip()
+t5 = blood_pressure%>%
+  ggplot(aes(x = Fire_Alarm_System_Operation))+geom_bar(fill = "orange")+theme(axis.title.y = element_text(size = 6), axis.text.y=element_text(size=6, hjust=1))+coord_flip()
+
+# gather four graph together as one figure
+grid.arrange(t1,t2,t4,t5,nrow=2,top=textGrob("Figure 1: Number of casese by different categories"))
+```
+
+
+Figure 1 shows the barplots of our categorical variables. The four bar charts represent the number of cases according to different categories. The count is the number of cases and is represented by the horizontal axis. Overall, it can be seen that there are five different methods of fire control, seven sprinkler system operations, seven different building status and four fire alarm system operations in this figure, and each categorical is represented by a specific index for simplification. The method of fire control that the fire was extinguished by fire department accounts for the largest proportion among all five categorical of control methods. Since it may be more costly for fire controlled with the intervention of fire department than fire extinguished without using any fire control method, I assume that this variable would be directly influence the variation of the fire cost. By contrast, except the percentage for action taken unclassified, the number of cases that fire controlled by self extinguished and extinguished by automatic system account for two smallest percentage of data. Moreover, buildings that have not installed sprinkler system and under normal building status have largest proportion of data. 
+
+```{r}
+p1 = blood_pressure %>%
+  filter(Number_of_responding_apparatus < 100)%>%
+  ggplot(aes(y = Estimated_Dollar_Loss,x = Number_of_responding_apparatus)) +
+  geom_point(alpha = 10, color = '#FF6666') +
+  theme_minimal() +
+  labs(x = "Number of Responding Apparatus",
+       y = "Estimated Dollar Loss (in $10,000) "
+       )+theme(axis.title.y = element_text(size = 8))
+p11 = p1 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)
+p11
+
+p2 = blood_pressure %>%
+  filter(Number_of_responding_personnel < 400)%>%
+  ggplot(aes(y = Estimated_Dollar_Loss,x = Number_of_responding_personnel)) +
+  theme_minimal() +
+  geom_point(color = 'orange')+
+  labs(x = "Number of Responding Personnel",
+       y = "Estimated Dollar Loss (in $10,000) "
+       )+theme(axis.title.y = element_text(size = 8))
+p22 = p2 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)
+p22
+
+grid.arrange(p11,p22,nrow=2,top=textGrob("Figure 2: Estimated Dollar Loss according to the Number of Apparatus and Personnel"))
+```
+
+Figure 2 shows relationship between two numerical variables. Each graph represents the relationship with estimated dollar loss by the number of responding apparatus and number of responding personnel respectively. The overall pattern of two plots is in linear form, which means there might exist a positive relationship between two predictors and response variable (an increase in one of the variables is associated with an increase in the other) because the data points make a straight line going from near the origin out to high y-values. Moreover, the strength in two graphs is moderate as most of the points are slightly spread out. In practical aspect, we assume that as the number of responding apparatus or personnel increase by one unit, the estimated dollar loss may also increase, holding other variables unchanged.
+
+
+# 3. Method and Model
+
+Statistical methods are applied in this section to help observing and interpreting the data in an alternative way. In this paper, two statistical methods will be applied to help exploring deeply about our data. These methods are simple linear regression model and confidence interval.
+
+## 3.1 Confidence interval
+
+To analyze our data more deeply, we narrow down our topic to be more focusing on the average percentage of Tanzania communities within all background characteristics that had no education experience. We calculated the estimated mean percentage above using this dataset, which is 25.644. However, since the dataset is just one sample, there might be a problem about how we obtain a measure of precision and confidence about our estimate. Therefore, in order to describes the uncertainty surrounding an estimate, we will perform statistical inference and apply bootstrap method to get the confidence interval in this section.
+
+Bootstrap is a statistical method that is used to estimate the sampling distribution about a given population. It creates multiple resamples (with replacement) from a single set of observations, and then computes the effect size of interest on each of these resamples. This bootstrap resamples of the effect size can then be used to determine the confidence interval. One type of bootstrap is empirical bootstrap, which samples from an estimator's sampling distribution without specifying the data distribution. In this paper, we will use empirical bootstrap. Besides, each confidence interval has a percentage associated with it, called a confidence level. More specificity, if we perform 95% confidence interval, 95% indicates that any such confidence interval will capture the population mean difference 95% of the time. Alternatively, it means that when repeating an experiment or survey over and over again, 95 percent of the time the results will match the results we get from a population. Moreover, with a 95 percent confidence interval, we have a 5 percent chance of being wrong. In addition, for a given dataset, increasing the confidence level of a confidence interval will only result in larger intervals (or at least not smaller). With the small sample, we expect to see that the 95% confidence interval is similar to the range of the data. But only a tiny fraction of the values in the large sample lie within the confidence interval. This is because the 95% confidence interval defines a range of values that you can be 95% certain contains the population mean. With large samples, we know that mean with much more precision than you do with a small sample, so the confidence interval is quite narrow when computed from a large sample. In our dataset, since the sample size is too small (n=43) and I think a wider confidence level might give an accurate result than a narrower one, I will use a relatively wider confidence level (95%) in this report. Before applying the bootstrap, there are some assumptions that need to be concerned. We assume that all samples are independent, and the parameter will be the true mean of percentage of people had no education experience.
+
+## 3.2 linear Regression Model
+
+The purpose is to investigate the "best" linear regression model that predict the estimated dollar loss caused by a fire, including the number of responding apparatus, responding personnel, arrival time, uesed fire control method, sprinkler system operation, building status and fire alarm system (see Appendix Table 1 for variable descriptions). We will build full model using these several predictors at the beginning. Then we will select only few predictors that can explain response variable the most by applying model selection methods for instance by checking assumption, detecting multicollinearity, and applying automatic model selection. The detailed description will be illustrated in the following few subsections.
+
+### 3.2.1 Model Setup
+The multiple linear regression (MLR) is used to model the linear relationship between the explanatory (independent) variables and response (dependent) variables. The general form for multiple linear regression is:
+
+$$y = \beta_0 + \beta_1x_1 + ...+ \beta_px_p+ \epsilon$$
+Where $\beta_i$ represents the coefficients need to estimated, $x_i, i = 1...p$ is the predictor variables, y is the response variable, $\epsilon$ is the error term. Mathematically, $\beta_0$ measures where the line intercept y-axis, and $\beta_1 -\beta_p$ measures the slope of the line. More practically, $\beta_o$ is the value of y when x equals the zero, and $\beta_1 -\beta_p$ is the average change of y when x increase by 1. I will first build the full model using seven predictors that I chose at the beginning, then I will apply the model selection methods to select only few predictors that can explain our response variable the most.
+
+### 3.2.2 Model Selection
+
+#### - Check linear Regression assumptions
+
+Regression violation testing is based on the statistical theory about assumptions of linear regression model. The linear regression model has four assumptions: linearity, uncorrelated errors, constant variance and normality. When deriving the unbiasedness and the covariance of our estimator, the assumptions may need to be used many times to obtain results. When all the model assumptions are satisfied, we can then be sure that the estimators will behave in a nice way and have all these lovely properties. However, if even one assumption is violated, this can have a large impact on how we can use our estimates.
+
+Residual plots can be used to determine whether there are violations of model assumptions. Residual plots allow us to visually inspect the model assumptions. Moreover, we work with residual plots because the data can sometimes be too noisy to see model violations clearly. There are three main types of residual scatter plots that we use: residuals versus predictor plots, residuals versus fitted values plots, and normal QQ plots. Both residual versus predictors and residual versus fitted value plots can be used to assess whether the first three assumptions hold. We can check by observing from the residuals plot and if there is no discernible pattern seen in the residual’s plots, then the assumptions hold. In other words, to satisfy the assumptions, residual verses fitted value and predictors plots should not have any pattern or large clusters of residuals. If the model does not violate any of these assumptions, we will consider current model as full model and proceed to the next step of model selection. By contrast, if our model does not satisfy these assumptions, we will apply Box-cox transformation to correct it. The transformed model will be the full model if violations are fixed, otherwise, we will record the violation. Once we have decided the full model, we proceed to the next step for model selection.
+
+#### - Check multicollinearity
+
+A model may provide contradictory information without noticing that this model required a transformation on the response or predictors to correct model violations. In fact, one such situation would be if the predictors are too strongly correlated with one another. This issue of multicollinearity and can result in a number of problems with the model. For example, coefficients may have the wrong sign, compared to existing
+knowledge of the relationship and many predictors may be non-significant individually, but the overall F-test is highly significant.Thus, there is needed to discover all the variables are highly correlated and solve the multicollinearity issue of the model. One tool that can be used to detect possible multicollinearity in the predictors that both takes into account the conditional nature of regression and the possibility multiple predictors are correlated to each other is VIF. We conduct by calculating the VIF and we remove the predictors that have a high VIF. In general, a VIF larger than 5 should be removed, and the process should be conducted multiple times until none of predictors have a VIF that is larger than 5.
+
+#### - Apply two model selection methods
+
+After detecting multicollinearity, I will use remaining predictors and perform both automated selection and manual selection methods to build two models. For automated selection, I will use stepwise selection based on AIC. This method is a combination of forward selection and backward elimination, testing at each step for variables to be included or excluded. It will automatically add or remove predictors until AIC will not increase in the next step. However, the result might not be trustable as it can be used even when model has violations. Therefore, it is needed to make sure that the model satisfies the assumptions first before applying AIC. For manual selection, I will choose appropriate predictors based on how significance they are to the response variable. I will manually remove the predictors with high p-values from full model, and build a new model using remaining few predictors. The model that was built using automatic selection will be the candidate model 1 while the model with manual selection will be candidate model 2. 
+
+After we built two candidate models, we will compare these models according to their AIC, BIC and adjusted $R^2$ to decide the most likely appropriate one as our preferred model. In general, the one with smaller AIC and BIC value, and higher adjusted $R^2$ is better. We also compare the assumption violations of each model using residual and QQ plots.
+
+#### - Problematic observations
+
+Once we have decided preferred model, we investigate problematic observations by checking through leverage point, outlier, and influential point. Leverage point can be verified using leverage formula while influential point can be checked using Cook’s Distance, DFFITS, and DFBETA. If there are no contextual reasons to remove those problematic observations, we will test data validation using testing dataset. We will build the same model using 20% testing dataset and then compare its adjusted $R^2$, predictor significance, and value of coefficient with the result shown in training dataset. If the difference of adjusted $R^2$, predictor significance, coefficient is not significant, then this model is likely validated. If this model is not validated, we will go back and test the validation of candidate 2 model. 
+
+
+# 4 Results
+## 4.1 Confidence interval
+
+The graph is the result of bootstrap confidence interval for mean time that firefighters take to arrive an fire occurrence location. Values between the 2 red lines are in the 95% interval. We rounded our result to three significant digits (refer to the table). We are 95% confident that true mean is between 297.44 and 304.15. The confidence interval is meaningful because both number (297.44 and 304.15) is close to and bounded around the sample mean we calculated above. Specifically, we are 95% sure that the true average time that firefighters take to arrive an occurrence location is between 297.44 and 304.15 second.
+
+```{r}
+#CI for no education group by age
+
+# set replications b
+repetitions <- 1000
+# store mean in boot mean 
+boot_mean <- rep(NA, repetitions)
+
+# simulate with replicates 
+for (i in 1:repetitions) {
+  sim_mean <- blood_pressure2 %>% sample_n(nrow(blood_pressure2), replace = TRUE) %>% summarise(mean = mean(as.numeric(arrival))) %>% as.numeric()
+  boot_mean[i] <- sim_mean
+}
+
+# make bootstrapped mean into tibble and store into boot_mean
+boot_mean <- tibble(mean = boot_mean)
+boot_mean%>%
+  ggplot(aes(x=mean))+geom_histogram(fill="orange", color="black")+geom_vline(xintercept = quantile(boot_mean$mean, c(0.025,0.975 )),color= "blue")+labs(x="Mean percent of no education people", title="Histogram of boostrapped mean")+theme_classic()
+
+  
+# quantile 
+#quantile(boot_mean$mean, c(0.025,0.975 ))
+```
+
+
+
+| Table 4: Confidence interval  |2.5%    |  97.5%   | CI      |
+|--------------------------------------|-------|----------|---------|
+|value |297.44| 304.15 | (297.44, 304.15 )|
+## 4.2 Linear Regression Model
+
+### 4.2.1 Starting model
+
+I build starting model using seven predictors that I am interested in. These predictors are: the number of responding apparatus, the number of responding personnel, arrival time, method of fire control, sprinkler system operation, building status, and fire alarm system operation. Our response variables is: estimated dollar loss. The estimated model will present in the form of multiple linear regression: 
+$$\hat{Estimated\;dollar\;loss} = \beta_0 + \beta_1\hat{Arrival\;time} + \beta_2\hat{Sprinkler\;system\;operation}+\beta_3\hat{Building\;status}+\beta_4\hat{Fire\;alarm\;system\;operation}$$ $$+\beta_5\hat{Number\; of\; apparatus} +\beta_6\hat{Number\; of\; personnel} +\beta_7\hat{Method\; of\; fire\; control}$$
+
+
+```{r}
+# Full model
+model_full <- lm(Estimated_Dollar_Loss ~ arrival+ Number_of_responding_apparatus+ Number_of_responding_personnel+ as.factor(Method_Of_Fire_Control)+as.factor(Sprinkler_System_Operation)+as.factor(Building_Status)+ as.factor(Fire_Alarm_System_Operation), data=train)
+summary(model_full)
+
+# power transform fails to work if any variable contains 0.
+# One way to fix this problem is to add 0.0000001 to this variable
+train <- train %>%
+  mutate(Estimated_Dollar_Loss = Estimated_Dollar_Loss+0.0000001, 
+         Number_of_responding_apparatus = Number_of_responding_apparatus+0.0000001,
+         Number_of_responding_personnel = Number_of_responding_personnel+0.0000001,
+         arrival = arrival +0.0000001)
+
+# box-cox transformation (only works for numerical variables)
+summary(powerTransform(cbind(train$Estimated_Dollar_Loss, 
+                             train$Number_of_responding_apparatus, 
+                             train$Number_of_responding_personnel,
+                             train$arrival
+)))
+
+train_trans <- train %>%
+  mutate(Estimated_Dollar_Loss_trans = log(Estimated_Dollar_Loss),
+         Number_of_responding_apparatus_trans = log(Number_of_responding_apparatus),
+         Number_of_responding_personnel_trans = log(Number_of_responding_personnel),
+         Method_Of_Fire_Control = Method_Of_Fire_Control,
+         arrival_trans = log(arrival))
+# Fit a new model with the transformed variables
+
+
+model_trans_full <- lm(Estimated_Dollar_Loss_trans ~ Number_of_responding_apparatus_trans+Number_of_responding_personnel_trans + arrival_trans + as.factor(Method_Of_Fire_Control) +as.factor(Sprinkler_System_Operation)+as.factor(Building_Status)+ as.factor(Fire_Alarm_System_Operation),
+                       data=train_trans)
+```
+
+
+### 4.2.2 Model Selection Result
+
+The model satisfies both condition 1 and 2. However, since there exist a large cluster in residual-fitted plot, the model may violate independence assumption. The normal QQ-plot shows that the normality assumption is quite satisfied as most of points are close to the diagonal. We apply Box-cox transformation to let it automatically generate appropriate transformed value for our variables, and we take log of response variable (estimated dollar loss), and log of other three numerical predictors in transformed model. By constructing residual plots and QQ-plot again on transformed model, we can see a significant improvement on model assumption of independence (Figure 3-5). Therefore, in the following sections, we will consider transformed model as full model and perform model selection process to choose the most appropriate combination of predictors to our model.
+```{r}
+#After transformation
+#Residual vs fitted
+res=rstandard(model_trans_full)
+y_hat = fitted(model_trans_full)
+plot(y_hat, res, main = "Figure 3: Residual VS. Fitted")
+#residual vs predictors
+par(mfrow = c(2, 2))
+plot(train_trans$Number_of_responding_apparatus_trans,res, main = "Figure 4: Residual VS. Predictors") #ok
+plot(train_trans$arrival_trans,res)
+plot(train_trans$Number_of_responding_personnel_trans,res) #ok?
+#qq plot
+qqnorm(res, main = "Figure 5: Normal QQ Plot")
+qqline(res)
+
+```
+
+
+Since the predictors “number of apparatus”, “number of personnel” and “method of fire control” have VIF greater than 5, we remove those predictors. We will use the remaining predictors to build a model as full model. In addition, the stepwide model selection producded the same full model, which means adding or removing any variables will increase AIC in the full model. Then we compare the full model and manual selected model that consist less predictors. Predictors in manual selected model are chosen based on their p-values. The predictors “arrival” and “Sprinkler System Operation” have p-value less than 0.05, so we build the model that only contains these two predictors (Table ----). The model that was built using automatic selection will be the candidate model 1 while the model with manual selection will be candidate model 2. Now, since two candidate models were constructed, we move to next step of choosing the best one as final model. 
+```{r}
+vif(model_trans_full)
+summary(model_trans_full)
+
+# Candidate model 1: auto selection
+model_trans_full2 <- lm(Estimated_Dollar_Loss_trans ~ arrival_trans  +as.factor(Sprinkler_System_Operation)+as.factor(Building_Status)+ as.factor(Fire_Alarm_System_Operation),
+                       data=train_trans)
+# Do the automatic selection
+model_auto_reduced <- step(model_trans_full2, direction="both")
+
+# Candidate model 2: manual selection
+# Manually remove the predictors with high p-values and save new model named new_model
+summary(model_trans_full2) 
+new_model = lm(Estimated_Dollar_Loss_trans ~ arrival_trans  +as.factor(Sprinkler_System_Operation),
+                       data=train_trans)
+
+
+```
+
+Variable | GVIF | DF 
+---------|------|------
+Number of responding apparatus |80.95   | 1  
+Number of responding personnel | 80.25  | 1
+arrival    | 1.02 | 1
+Method Of Fire Control  |5.22| 4 
+Sprinkler System Operation |2.81| 6
+Building Status |1.19| 6
+Fire Alarm System Operation |1.62| 3
+Table: Numerical summaries of the variables (Testing dataset)
+
+Determining a better model through examining model assumptions may not work here as residual and QQ plot in both two models look similar, that is, both models seem have worse violation in linearity and normality. It is because there is a significant linear pattern in their residual plots and points are not close to diagonal in QQ plot (see Appendix 1-4 ). However, candidate 1 model can still be the preferred model as it has a smaller adjusted $R^2$ and larger AIC/BIC (Table----). There are 567 leverage point and no contextual reasons to remove them. In addition, there are no outlier or influential point in the training dataset. Therefore, the final preferred model will be the candidate 1 model.
+
+
+```{r}
+# for both automatic selected model and manually selected model
+summary(model_auto_reduced)$adj.r.squared
+summary(new_model)$adj.r.squared
+
+AIC(model_auto_reduced)
+AIC(new_model)
+
+BIC(model_auto_reduced)
+BIC(new_model)
+
+# Leverage Point
+h <- hatvalues(model_auto_reduced)
+threshold <- 2*(length(model_auto_reduced$coefficients)/nrow(train_trans)) 
+which(h > threshold)
+
+#outlier
+std_res <- rstandard(model_auto_reduced)
+which(abs(std_res)>4)
+
+# Cooks's Distance
+D <- cooks.distance(model_auto_reduced)
+cutoff_D <- qf(0.5, 
+               length(model_auto_reduced$coefficients), 
+               nrow(train_trans)-length(model_auto_reduced$coefficients))
+which(D > cutoff_D)
+```
+
+
+
+
+
+
+|Model |	Adjusted $R^2$	|AIC	|BIC |
+|---------|---------|--------|----------|
+|Auto Selected Model | 0.09|55511.72|55639.55
+|Manual Selected Model|0.08|55629.42|55693.33
+Table---- Model Selection Criteria
+
+To test the validation of Candidate 1 model, Table 1 and 2 in Data section shows that the mean of predictors and response variable in both training and testing dataset are similar. However, in Table------, although the adjusted $R^2$ are similar and the significant predictors are the same, the coefficients have big difference between two models. Moreover, we have checked the assumption violation for model using training dataset and it shows that model may violate normality. However, the model fitted by using testing dataset, it seems not violate normality assumption. Therefore, this model is not likely validated. Similarly, Candidate 2 model is also not validated by examining residual and QQ plots. Thus, we will record this limitation in discussion section and still consider candidate model 1 as our final model.
+
+The final model with four predictors is: $$log(Estimated\;dollar\;loss) = \beta_0 + \beta_1log(Arrival\;time) + \beta_2log(Sprinkler\;system\;operation)+\beta_3log(Building\;status)+\beta_4log(Fire\;alarm\;system\;operation)$$
+
+
+
+
+P-values and coefficients in regression analysis work together to be used for showing which relationships in the model are statistically significant and the nature of those relationships. The p-values for the coefficients indicates whether these relationships are statistically significant. The sign of a regression coefficient can tell us whether there is a positive or negative correlation between each independent variable and the dependent variable. A positive coefficient indicates that as the value of the independent variable increases, the mean of the dependent variable also tends to increase. 
+
+Our regression output can be seen in table------, where all the coefficients of our predictors in both training and testing datasets are listed. The coefficients describe the mathematical relationship between each independent variable and the dependent variable. From the previous analysis, we found that dollar loss is related to firefighter’s arrival time, sprinkler system operation, building system and fire alarm system. If one unit increase in log of arrival time, we expect 1.08 increase in log of dollar loss, holding other variables constant. As for variable building status, the estimated dollar loss for building status under renovation (02) is 1.21 higher than building status that is normal (01). Similar interpretation can be applied to other variables. These findings explain the research question of how these four predictors influence dollar loss caused by a fire.
+
+
+Table 4: Parameter Estimates for Final Model (Response: log(Estimated dollar loss))		
+｜Variable ｜	Coefficient Estimate (Training)	｜Standard Error (Training)	｜Coefficient Estimate (Testing) ｜	Standard Error(Testing)｜
+｜---------｜---------｜--------｜----------｜----------------｜
+｜(Intercept)｜	-9.7944	｜1.1171｜	-4.424	｜1.0036｜
+｜arrival time｜	1.0755｜	0.1951｜	0.498｜	0.1734｜
+｜as.factor(Sprinkler_System_Operation)2｜	-0.4937｜	0.2538｜	-1.1073｜	0.2234
+｜as.factor(Sprinkler_System_Operation)3｜	-3.2645｜	0.3034｜	-1.2684｜	0.2701
+｜as.factor(Sprinkler_System_Operation)4｜	1.2539｜	0.5777｜	-1.0267｜	0.6095
+｜as.factor(Sprinkler_System_Operation)5｜	0.3633｜	0.5864｜	-0.7491	｜0.6758
+｜as.factor(Sprinkler_System_Operation)8｜	1.6487｜	0.2297｜	-0.4902	｜0.2022
+｜as.factor(Sprinkler_System_Operation)9｜	-0.1974｜	0.2941｜	-1.3295	｜0.2613
+｜as.factor(Building_Status)02｜	1.2113｜	0.2796｜	0.7461｜	0.2314
+｜as.factor(Building_Status)03｜	0.166｜	0.4764｜	-0.5147	｜0.487
+｜as.factor(Building_Status)04｜	-6.0362	｜1.4839｜	-4.1377	｜1.2509
+｜as.factor(Building_Status)05｜	-0.5999｜	0.8282｜	-1.2516	｜0.732
+｜as.factor(Building_Status)08｜	-1.7049｜	0.2483｜	-0.644｜	0.2324
+｜as.factor(Building_Status)09｜	0.9347｜	0.6289｜	1.0825｜	0.7267
+｜as.factor(Fire_Alarm_System_Operation)2｜	-1.0328｜	0.1886｜	-0.9748｜	0.1557
+｜as.factor(Fire_Alarm_System_Operation)8｜	0.4879｜	0.1546｜	0.1212｜	0.1329
+｜as.factor(Fire_Alarm_System_Operation)9｜0.1576	｜0.1861	｜-0.1132｜	0.171
+
+ 
+
+
+
+
+
+
+# 5. Discussion
+
+## 5.1 Findings 
+## 5.2 Limitation and Next steps
+\newpage
+# 6. Appendix 
+
+Variable | Description | Type
+---------|------|-------------------
+Dollar Loss    |Estimated dollar loss for each fire incident   | Number
+Responding Apparatus    |Number of equipment used   | Number
+Responding Personnel    |Number of responding firefighters    | Number
+Fire Control Method.    |Different methods of fire control   |Character
+
+Table 1: Description of variables of interest 
+
+```{r}
+# Compare auto selected and manual residual fitted
+par(mfrow = c(2, 1))
+res1 <- rstandard(model_auto_reduced)
+y_hat <- fitted(model_auto_reduced)
+plot(y_hat, res,main = "1. Residual VS. Fitted (auto selected)")
+
+# manual 
+res2 <- rstandard(new_model)
+y_hat <- fitted(new_model)
+plot(y_hat, res, main = "2. Residual VS. Fitted (manually selected)")
+
+
+
+```
+
+
+```{r}
+
+# Compare auto qq and manual qq
+par(mfrow = c(2, 1))
+qqnorm(res1, main = "3. Normal QQ plot (auto selected)")
+qqnorm(res2, main = "4. Normal QQ plot (manually selected)")
+
+```
+
+\newpage
+# 7. Reference
+
