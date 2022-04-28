@@ -190,6 +190,7 @@ grid.arrange(t1,t2,t4,t5,nrow=2,top=textGrob("Figure 1: Number of fire incidents
 Figure 1 shows the barplots of our categorical variables. The four bar charts represent the number of cases according to different categories. The count is the number of cases and is represented by the horizontal axis. Overall, it can be seen that there are five different methods of fire control, seven sprinkler system operations, seven different building status and four fire alarm system operations in this figure, and each categorical is represented by a specific index for simplification. The method of fire control that the fire was extinguished by fire department accounts for the largest proportion among all five categorical of control methods. Since it may be more costly for fire controlled with the intervention of fire department than fire extinguished without using any fire control method, I assume that this variable would be directly influence the variation of the fire cost. By contrast, except the percentage for action taken unclassified, the number of cases that fire controlled by self extinguished and extinguished by automatic system account for two smallest percentage of data. Moreover, buildings that have not installed sprinkler system and under normal building status have largest proportion of data. 
 
 ```{r, include=FALSE, message=FALSE, warning=FALSE}
+#Create scatterplot between response variable and predictors 
 p1 = blood_pressure %>%
   filter(Number_of_responding_apparatus < 100)%>%
   ggplot(aes(y = Estimated_Dollar_Loss,x = Number_of_responding_apparatus)) +
@@ -198,7 +199,7 @@ p1 = blood_pressure %>%
   labs(x = "Number of Responding Apparatus",
        y = "Estimated Dollar Loss (in $10,000) "
        )+theme(axis.title.y = element_text(size = 8))
-p11 = p1 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)
+p11 = p1 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)#add a straight line
 p11
 
 p2 = blood_pressure %>%
@@ -209,7 +210,7 @@ p2 = blood_pressure %>%
   labs(x = "Number of Responding Personnel",
        y = "Estimated Dollar Loss (in $10,000) "
        )+theme(axis.title.y = element_text(size = 8))
-p22 = p2 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)
+p22 = p2 + geom_smooth(method = "lm", se = FALSE,colour = "red",size = .5)#add a straight line
 p22
 
 
@@ -217,6 +218,7 @@ p22
 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Gather p11 and p22 plots together into one figure
 grid.arrange(p11,p22,nrow=2,top=textGrob("Figure 2: Relationship between Estimated Dollar Loss and the Number of Apparatus/Personnel",gp=gpar(fontsize=10)))
 ```
 

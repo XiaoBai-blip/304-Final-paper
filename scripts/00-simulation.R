@@ -14,14 +14,15 @@ set.seed(789)# We randomly set values for set seed
 simulated_fire_data <- 
   tibble(
     Method_of_fire_control  = 
-      c(                 # Randomly choose one of eight options, we repeat the name of each residence 20 times with rep()
+      c(                 # Randomly choose one of five options, we repeat the name of each method of fire control
+        #20 and 120 times with rep()
         rep('Action taken unclassfied', 20),
         rep('Fire self extinguished',20 ),
         rep('Extinguished by occupant', 20),
         rep('Extinguished by automatic system', 20),
         rep('Extinguished by fire department', 120)),
     Building_status  = 
-      c(                 # Randomly choose one of eight options, we repeat the name of each residence 20 times with rep()
+      c(                 # Randomly choose one of seven options, we repeat the name of each residence 20/40/60 times with rep()
         rep('Undetermined', 40),
         rep('Not applicable', 20),
         rep('Abandoned', 20),
@@ -30,7 +31,7 @@ simulated_fire_data <-
         rep('Under Renovation',20),
         rep('Normal',20)),
     Sprinkler_system_operation  = 
-      c(                 # Randomly choose one of eight options, we repeat the name of each residence 20 times with rep()
+      c(                 # Randomly choose one of seven options, we repeat the name of each residence 20/30/70 times with rep()
         rep('Activation/Operation undetermined', 30),
         rep('Not applicable - no sprinkler system present', 70),
         rep('Did not activate', 20),
@@ -39,7 +40,7 @@ simulated_fire_data <-
         rep('Did not activate: remote from fire',20),
         rep('Sprinkler system activated',20)),
     Fire_Alarm_System_Operation  = 
-      c(                 # Randomly choose one of eight options, we repeat the name of each residence 20 times with rep()
+      c(                 # Randomly choose one of four options, we repeat the name of each residence 40/50/70 times with rep()
         rep('Undetermined', 40),
         rep('Not applicable', 70),
         rep('Fire alarm system did not operate', 50),
